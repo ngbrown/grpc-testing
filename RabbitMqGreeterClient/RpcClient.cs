@@ -81,7 +81,7 @@ public class RpcClient : IDisposable
         return CallAsync(messageBytes, cancellationToken);
     }
 
-    public Task<string> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
+    public async Task<string> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
     {
         IBasicProperties props = _channel.CreateBasicProperties();
         var correlationId = Guid.NewGuid().ToString();
@@ -96,18 +96,80 @@ public class RpcClient : IDisposable
             basicProperties: props,
             body: messageBytes);
 
-        var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(this.Timeout);
-        var timeoutToken = timeoutCts.Token;
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        timeoutToken.Register(() =>
+        if (this.Timeout != TimeSpan.MaxValue)
         {
-            // In case of timeout, the HttpClient seems to be able to nest the TimeoutException within the TaskCanceledException.
-            // https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpclient.getasync?view=net-7.0
+            cts.CancelAfter(this.Timeout);
+        }
+        var ctsToken = cts.Token;
+
+        ctsToken.Register(() =>
+        {
             _callbackMapper.TryRemove(correlationId, out var tcs2);
-            tcs2?.TrySetCanceled(timeoutToken);
+            tcs2?.TrySetCanceled(ctsToken);
         });
-        return tcs.Task;
+
+        try
+        {
+            return await tcs.Task;
+        }
+        catch (Exception ex)
+        {
+            HandleFailure(ex, cts, cancellationToken);
+            throw;
+        }
+        finally
+        {
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// In case of timeout, nest the TimeoutException within the TaskCanceledException.
+    /// </summary>
+    /// <remarks>
+    /// See https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpclient.getasync?view=net-7.0
+    /// </remarks>
+    private void HandleFailure(Exception ex, CancellationTokenSource cts, CancellationToken cancellationToken)
+    {
+        Exception? toThrow = null;
+
+        if (ex is OperationCanceledException oce)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                if (oce.CancellationToken != cancellationToken)
+                {
+                    // We got a cancellation exception, and the caller requested cancellation, but the exception doesn't contain that token.
+                    // Massage things so that the cancellation exception we propagate appropriately contains the caller's token (it's possible
+                    // multiple things caused cancellation, in which case we can attribute it to the caller's token, or it's possible the
+                    // exception contains the linked token source, in which case that token isn't meaningful to the caller).
+                    ex = toThrow = new TaskCanceledException(oce.Message, oce, cancellationToken);
+                }
+            }
+            else if (cts.IsCancellationRequested)
+            {
+                // If the linked cancellation token source was canceled, but cancellation wasn't requested by the caller's token
+                // the only other cause could be a timeout.  Treat it as such.
+
+                // cancellationToken could have been triggered right after we checked it, but before we checked the cts.
+                // We must check it again to avoid reporting a timeout when one did not occur.
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    ex = toThrow = new TaskCanceledException(
+                        $"RpcClient Request Timeout after {this.Timeout.TotalSeconds} seconds",
+                        new TimeoutException(ex.Message, ex));
+                }
+            }
+        }
+
+        // TODO: Log failure
+
+        if (toThrow != null)
+        {
+            throw toThrow;
+        }
     }
 
     public void Dispose()
