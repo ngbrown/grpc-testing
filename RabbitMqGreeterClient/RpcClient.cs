@@ -102,6 +102,8 @@ public class RpcClient : IDisposable
 
         timeoutToken.Register(() =>
         {
+            // In case of timeout, the HttpClient seems to be able to nest the TimeoutException within the TaskCanceledException.
+            // https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpclient.getasync?view=net-7.0
             _callbackMapper.TryRemove(correlationId, out var tcs2);
             tcs2?.TrySetCanceled(timeoutToken);
         });

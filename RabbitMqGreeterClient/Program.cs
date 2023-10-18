@@ -5,14 +5,21 @@ namespace RabbitMqGreeterClient
 {
     internal class Program
     {
-        static async Task Main(string[] args)
+        static async Task<int> Main(string[] args)
         {
             Console.WriteLine("RPC Client");
-            string n = args.Length > 0 ? args[0] : "43";
-            await InvokeAsync(int.Parse(n)).ConfigureAwait(false);
+            string argN = args.Length > 0 ? args[0] : "46";
+            var n = int.Parse(argN);
+            if (n > 46)
+            {
+                Console.WriteLine("Argument exceeds possible bounds. Limit to 46 or less.");
+                return 1;
+            }
+            await InvokeAsync(n).ConfigureAwait(false);
 
             Console.WriteLine(" Press [enter] to exit.");
             Console.ReadLine();
+            return 0;
         }
 
         private static async Task InvokeAsync(int max)
@@ -23,7 +30,7 @@ namespace RabbitMqGreeterClient
 
             for (;;)
             {
-                var next = (int)Math.Round(rng.NextDouble() * max);
+                var next = NextIntBetween(rng, 2, max);
                 Console.WriteLine(" [x] Requesting fib({0})", next);
 
                 try
@@ -36,8 +43,13 @@ namespace RabbitMqGreeterClient
                     Console.WriteLine(ex.Message);
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(1));
+                await Task.Delay(TimeSpan.FromMilliseconds(100));
             }
+        }
+
+        private static int NextIntBetween(Random rng, int min, int max)
+        {
+            return min + (int)Math.Round(rng.NextDouble() * (max - min));
         }
     }
 }

@@ -7,10 +7,14 @@ namespace GrpcGreeter;
 
 public class RabbitMqServer : IHostedService
 {
+    private const string QUEUE_NAME = "rpc_queue";
+
     private readonly ILogger<RabbitMqServer> _logger;
 
     private IConnection? _connection;
-    private IModel? _channel;
+    private readonly List<IModel> _channels = new();
+    private ushort _parallelCount = 4;
+    private readonly CancellationTokenSource _serviceCancellationTokenSource = new();
 
     public RabbitMqServer(ILogger<RabbitMqServer> logger)
     {
@@ -21,29 +25,38 @@ public class RabbitMqServer : IHostedService
     {
         var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest" };
         _connection = factory.CreateConnection();
-        _channel = _connection.CreateModel();
 
-        _channel.QueueDeclare(queue: "rpc_queue",
-            durable: false,
-            exclusive: false,
-            autoDelete: false,
-            arguments: null);
-        _channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+        for (int i = 0; i < _parallelCount; i++)
+        {
+            var channel = _connection.CreateModel();
+            this._channels.Add(channel);
 
-        var consumer = new EventingBasicConsumer(_channel);
-        consumer.Received += OnMessageReceived;
-        _channel.BasicConsume(queue: "rpc_queue",
-            autoAck: false,
-            consumer: consumer);
+            if (i == 0)
+            {
+                channel.QueueDeclare(queue: QUEUE_NAME,
+                    durable: false,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: null);
+            }
+
+            channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+
+            var consumer = new EventingBasicConsumer(channel);
+            consumer.Received += OnMessageReceived;
+            channel.BasicConsume(queue: QUEUE_NAME,
+                autoAck: false,
+                consumer: consumer);
+        }
 
         this._logger.LogInformation("Awaiting RPC requests");
 
         return Task.CompletedTask;
     }
 
-    private void OnMessageReceived(object? model, BasicDeliverEventArgs ea)
+    private void OnMessageReceived(object? consumer, BasicDeliverEventArgs ea)
     {
-        var channel = _channel;
+        var channel = (consumer as EventingBasicConsumer)?.Model;
         if (channel == null || channel.IsClosed) throw new OperationCanceledException();
 
         string response = string.Empty;
@@ -53,16 +66,31 @@ public class RabbitMqServer : IHostedService
         var replyProps = channel.CreateBasicProperties();
         replyProps.CorrelationId = props.CorrelationId;
 
+        CancellationToken cancellationToken = this._serviceCancellationTokenSource.Token;
+        CancellationTokenSource? cts = default;
+        if (!string.IsNullOrWhiteSpace(props.Expiration) && int.TryParse(props.Expiration, out int expirationMs))
+        {
+            cts = CancellationTokenSource.CreateLinkedTokenSource(this._serviceCancellationTokenSource.Token);
+            cts.CancelAfter(expirationMs);
+            cancellationToken = cts.Token;
+        }
+
+        int? n = default;
         try
         {
-            var message = Encoding.UTF8.GetString(body);
-            int n = int.Parse(message);
-            this._logger.LogInformation("Fib({message})", message);
-            response = Fib(n).ToString(CultureInfo.InvariantCulture);
+            var requestMessage = Encoding.UTF8.GetString(body);
+            n = int.Parse(requestMessage);
+            this._logger.LogInformation("Fib({n})", n);
+            response = Fib(n.Value, cancellationToken).ToString(CultureInfo.InvariantCulture);
         }
-        catch (Exception e)
+        catch (OperationCanceledException ex)
         {
-            this._logger.LogError(e, "{message}", e.Message);
+            this._logger.LogWarning("Fib({n}) - {message}", n, ex.Message);
+            response = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            this._logger.LogError(ex, "Fib({n}) - {message}", n, ex.Message);
             response = string.Empty;
         }
         finally
@@ -70,13 +98,20 @@ public class RabbitMqServer : IHostedService
             var responseBytes = Encoding.UTF8.GetBytes(response);
             channel.BasicPublish(exchange: string.Empty, routingKey: props.ReplyTo, basicProperties: replyProps, body: responseBytes);
             channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
+            cts?.Dispose();
         }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        this._channel?.Dispose();
+        _serviceCancellationTokenSource.Cancel();
+
+        foreach (var channel in this._channels)
+        {
+            channel.Dispose();
+        }
         this._connection?.Dispose();
+        this._serviceCancellationTokenSource.Dispose();
 
         return Task.CompletedTask;
     }
@@ -86,13 +121,15 @@ public class RabbitMqServer : IHostedService
     /// Assumes only valid positive integer input.
     /// Don't expect this one to work for big numbers, and it's probably the slowest recursive implementation possible.
     /// </remarks>
-    private static int Fib(int n)
+    private static int Fib(int n, CancellationToken cancellationToken)
     {
         if (n is 0 or 1)
         {
             return n;
         }
 
-        return Fib(n - 1) + Fib(n - 2);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return Fib(n - 1, cancellationToken) + Fib(n - 2, cancellationToken);
     }
 }
