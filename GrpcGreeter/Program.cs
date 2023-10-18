@@ -14,6 +14,8 @@ namespace GrpcGreeter
             // Add services to the container.
             builder.Services.AddGrpc();
 
+            builder.Services.AddHostedService<RabbitMqServer>();
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.

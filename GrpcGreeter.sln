@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GrpcGreeter", "GrpcGreeter\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GrpcGreeterClient", "GrpcGreeterClient\GrpcGreeterClient.csproj", "{B71D1CB2-241A-4063-BED4-31C1F1F9EA7E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RabbitMqGreeterClient", "RabbitMqGreeterClient\RabbitMqGreeterClient.csproj", "{09378D71-6635-425B-86EE-28925306908A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{B71D1CB2-241A-4063-BED4-31C1F1F9EA7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B71D1CB2-241A-4063-BED4-31C1F1F9EA7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B71D1CB2-241A-4063-BED4-31C1F1F9EA7E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{09378D71-6635-425B-86EE-28925306908A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{09378D71-6635-425B-86EE-28925306908A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{09378D71-6635-425B-86EE-28925306908A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{09378D71-6635-425B-86EE-28925306908A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
