@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Globalization;
+using System.Text;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -28,14 +29,14 @@ public class RabbitMqServer : IHostedService
             autoDelete: false,
             arguments: null);
         _channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+
         var consumer = new EventingBasicConsumer(_channel);
+        consumer.Received += OnMessageReceived;
         _channel.BasicConsume(queue: "rpc_queue",
             autoAck: false,
             consumer: consumer);
 
         this._logger.LogInformation("Awaiting RPC requests");
-
-        consumer.Received += OnMessageReceived;
 
         return Task.CompletedTask;
     }
@@ -57,7 +58,7 @@ public class RabbitMqServer : IHostedService
             var message = Encoding.UTF8.GetString(body);
             int n = int.Parse(message);
             this._logger.LogInformation("Fib({message})", message);
-            response = Fib(n).ToString();
+            response = Fib(n).ToString(CultureInfo.InvariantCulture);
         }
         catch (Exception e)
         {

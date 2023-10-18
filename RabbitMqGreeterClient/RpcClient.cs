@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -14,20 +15,55 @@ public class RpcClient : IDisposable
     private readonly string _replyQueueName;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _callbackMapper = new();
 
-    public RpcClient()
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
+
+    private RpcClient(IConnection connection, IModel channel, string replyQueueName)
+    {
+        _connection = connection;
+        _channel = channel;
+        _replyQueueName = replyQueueName;
+    }
+
+    public static RpcClient Connect()
     {
         var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest"  };
 
-        _connection = factory.CreateConnection();
-        _channel = _connection.CreateModel();
-        // declare a server-named queue
-        _replyQueueName = _channel.QueueDeclare().QueueName;
-        var consumer = new EventingBasicConsumer(_channel);
-        consumer.Received += OnMessageReceived;
+        IConnection? connection = null;
+        IModel? channel = null;
+        RpcClient rpcClient;
 
-        _channel.BasicConsume(consumer: consumer,
-            queue: _replyQueueName,
-            autoAck: true);
+        try
+        {
+            connection = factory.CreateConnection();
+            channel = connection.CreateModel();
+            // declare a server-named queue
+            var replyQueueName = channel.QueueDeclare().QueueName;
+
+            rpcClient = new RpcClient(connection, channel, replyQueueName);
+        }
+        catch (Exception)
+        {
+            channel?.Dispose();
+            connection?.Dispose();
+            throw;
+        }
+
+        try
+        {
+            var consumer = new EventingBasicConsumer(rpcClient._channel);
+            consumer.Received += rpcClient.OnMessageReceived;
+
+            rpcClient._channel.BasicConsume(consumer: consumer,
+                queue: rpcClient._replyQueueName,
+                autoAck: true);
+        }
+        catch (Exception)
+        {
+            rpcClient.Dispose();
+            throw;
+        }
+
+        return rpcClient;
     }
 
     private void OnMessageReceived(object? model, BasicDeliverEventArgs ea)
@@ -41,11 +77,17 @@ public class RpcClient : IDisposable
 
     public Task<string> CallAsync(string message, CancellationToken cancellationToken = default)
     {
+        var messageBytes = Encoding.UTF8.GetBytes(message);
+        return CallAsync(messageBytes, cancellationToken);
+    }
+
+    public Task<string> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
+    {
         IBasicProperties props = _channel.CreateBasicProperties();
         var correlationId = Guid.NewGuid().ToString();
         props.CorrelationId = correlationId;
         props.ReplyTo = _replyQueueName;
-        var messageBytes = Encoding.UTF8.GetBytes(message);
+        props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
         var tcs = new TaskCompletionSource<string>();
         _callbackMapper.TryAdd(correlationId, tcs);
 
@@ -54,7 +96,15 @@ public class RpcClient : IDisposable
             basicProperties: props,
             body: messageBytes);
 
-        cancellationToken.Register(() => _callbackMapper.TryRemove(correlationId, out _));
+        var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(this.Timeout);
+        var timeoutToken = timeoutCts.Token;
+
+        timeoutToken.Register(() =>
+        {
+            _callbackMapper.TryRemove(correlationId, out var tcs2);
+            tcs2?.TrySetCanceled(timeoutToken);
+        });
         return tcs.Task;
     }
 
