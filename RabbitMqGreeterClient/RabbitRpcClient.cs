@@ -6,7 +6,7 @@ using RabbitMQ.Client.Events;
 
 namespace RabbitMqGreeterClient;
 
-public class RpcClient : IDisposable
+public class RabbitRpcClient : IDisposable
 {
     private const string QUEUE_NAME = "rpc_queue";
 
@@ -17,20 +17,20 @@ public class RpcClient : IDisposable
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
 
-    private RpcClient(IConnection connection, IModel channel, string replyQueueName)
+    private RabbitRpcClient(IConnection connection, IModel channel, string replyQueueName)
     {
         _connection = connection;
         _channel = channel;
         _replyQueueName = replyQueueName;
     }
 
-    public static RpcClient Connect()
+    public static RabbitRpcClient Connect()
     {
         var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest"  };
 
         IConnection? connection = null;
         IModel? channel = null;
-        RpcClient rpcClient;
+        RabbitRpcClient rpcClient;
 
         try
         {
@@ -39,7 +39,7 @@ public class RpcClient : IDisposable
             // declare a server-named queue
             var replyQueueName = channel.QueueDeclare().QueueName;
 
-            rpcClient = new RpcClient(connection, channel, replyQueueName);
+            rpcClient = new RabbitRpcClient(connection, channel, replyQueueName);
         }
         catch (Exception)
         {

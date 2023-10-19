@@ -37,7 +37,7 @@ namespace RabbitMqGreeterClient
 
         private static async Task InvokeAsync(int max, CancellationToken cancellationToken)
         {
-            using var rpcClient = RpcClient.Connect();
+            using var rpcClient = RabbitRpcClient.Connect();
             rpcClient.Timeout = TimeSpan.FromMilliseconds(1000);
             var rng = new Random();
 
