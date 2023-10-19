@@ -8,43 +8,57 @@ namespace RabbitMqGreeterClient;
 
 public class RabbitRpcClient : IDisposable
 {
-    private const string QUEUE_NAME = "rpc_queue";
-
     private readonly IConnection _connection;
     private readonly IModel _channel;
+    private readonly string _rpcQueueName;
     private readonly string _replyQueueName;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _callbackMapper = new();
+    private bool _disposeConnection;
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
 
-    private RabbitRpcClient(IConnection connection, IModel channel, string replyQueueName)
+    private RabbitRpcClient(IConnection connection, IModel channel, string rpcQueueName, string replyQueueName)
     {
         _connection = connection;
         _channel = channel;
+        _rpcQueueName = rpcQueueName;
         _replyQueueName = replyQueueName;
     }
-
-    public static RabbitRpcClient Connect()
+    
+    public static RabbitRpcClient Connect(IConnectionFactory factory, string rpcQueueName)
     {
-        var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest"  };
-
         IConnection? connection = null;
+
+        try
+        {
+            connection = factory.CreateConnection();
+            var rpcClient = Connect(connection, rpcQueueName);
+            rpcClient._disposeConnection = true;
+            return rpcClient;
+        }
+        catch (Exception)
+        {
+            connection?.Dispose();
+            throw;
+        }
+    }
+
+    public static RabbitRpcClient Connect(IConnection connection, string rpcQueueName)
+    {
         IModel? channel = null;
         RabbitRpcClient rpcClient;
 
         try
         {
-            connection = factory.CreateConnection();
             channel = connection.CreateModel();
             // declare a server-named queue
             var replyQueueName = channel.QueueDeclare().QueueName;
 
-            rpcClient = new RabbitRpcClient(connection, channel, replyQueueName);
+            rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyQueueName);
         }
         catch (Exception)
         {
             channel?.Dispose();
-            connection?.Dispose();
             throw;
         }
 
@@ -92,7 +106,7 @@ public class RabbitRpcClient : IDisposable
         _callbackMapper.TryAdd(correlationId, tcs);
 
         _channel.BasicPublish(exchange: string.Empty,
-            routingKey: QUEUE_NAME,
+            routingKey: _rpcQueueName,
             basicProperties: props,
             body: messageBytes);
 
@@ -175,6 +189,7 @@ public class RabbitRpcClient : IDisposable
     public void Dispose()
     {
         _channel.Dispose();
-        _connection.Dispose();
+
+        if (_disposeConnection) _connection.Dispose();
     }
 }

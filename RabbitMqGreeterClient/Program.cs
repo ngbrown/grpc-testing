@@ -1,9 +1,12 @@
-﻿using System.Globalization;
+﻿using RabbitMQ.Client;
+using System.Globalization;
 
 namespace RabbitMqGreeterClient
 {
     internal class Program
     {
+        private const string QUEUE_NAME = "rpc_queue";
+
         static async Task<int> Main(string[] args)
         {
             CancellationTokenSource consoleCts = new CancellationTokenSource();
@@ -37,7 +40,9 @@ namespace RabbitMqGreeterClient
 
         private static async Task InvokeAsync(int max, CancellationToken cancellationToken)
         {
-            using var rpcClient = RabbitRpcClient.Connect();
+            var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest"  };
+
+            using var rpcClient = RabbitRpcClient.Connect(factory, QUEUE_NAME);
             rpcClient.Timeout = TimeSpan.FromMilliseconds(1000);
             var rng = new Random();
 
