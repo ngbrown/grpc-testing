@@ -12,7 +12,7 @@ public class RabbitRpcClient : IDisposable
     private readonly IModel _channel;
     private readonly string _rpcQueueName;
     private readonly string _replyQueueName;
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _callbackMapper = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<byte[]>> _callbackMapper = new();
     private bool _disposeConnection;
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
@@ -85,24 +85,25 @@ public class RabbitRpcClient : IDisposable
         if (!_callbackMapper.TryRemove(ea.BasicProperties.CorrelationId, out var tcs)) return;
 
         var body = ea.Body.ToArray();
-        var response = Encoding.UTF8.GetString(body);
-        tcs.TrySetResult(response);
+        tcs.TrySetResult(body);
     }
 
-    public Task<string> CallAsync(string message, CancellationToken cancellationToken = default)
+    public async Task<string> CallAsync(string message, CancellationToken cancellationToken = default)
     {
         var messageBytes = Encoding.UTF8.GetBytes(message);
-        return CallAsync(messageBytes, cancellationToken);
+        var body = await CallAsync(messageBytes, cancellationToken);
+        var response = Encoding.UTF8.GetString(body);
+        return response;
     }
 
-    public async Task<string> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
+    public async Task<byte[]> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
     {
         IBasicProperties props = _channel.CreateBasicProperties();
         var correlationId = Guid.NewGuid().ToString();
         props.CorrelationId = correlationId;
         props.ReplyTo = _replyQueueName;
         props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
-        var tcs = new TaskCompletionSource<string>();
+        var tcs = new TaskCompletionSource<byte[]>();
         _callbackMapper.TryAdd(correlationId, tcs);
 
         _channel.BasicPublish(exchange: string.Empty,
