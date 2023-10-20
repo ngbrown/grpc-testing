@@ -14,6 +14,7 @@ namespace GrpcGreeter
             // Add services to the container.
             builder.Services.AddGrpc();
 
+            builder.Services.AddSingleton<FibService>();
             builder.Services.AddHostedService<RabbitMqServer>();
 
             var app = builder.Build();

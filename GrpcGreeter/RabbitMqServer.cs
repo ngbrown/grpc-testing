@@ -1,6 +1,4 @@
-﻿using System.Globalization;
-using System.Text;
-using RabbitMQ.Client;
+﻿using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
 namespace GrpcGreeter;
@@ -9,6 +7,7 @@ public class RabbitMqServer : IHostedService
 {
     private const string QUEUE_NAME = "rpc_queue";
 
+    private readonly FibService _fibService;
     private readonly ILogger<RabbitMqServer> _logger;
 
     private IConnection? _connection;
@@ -16,8 +15,9 @@ public class RabbitMqServer : IHostedService
     private ushort _parallelCount = 4;
     private readonly CancellationTokenSource _serviceCancellationTokenSource = new();
 
-    public RabbitMqServer(ILogger<RabbitMqServer> logger)
+    public RabbitMqServer(FibService fibService, ILogger<RabbitMqServer> logger)
     {
+        _fibService = fibService;
         _logger = logger;
     }
 
@@ -57,49 +57,11 @@ public class RabbitMqServer : IHostedService
     private void OnMessageReceived(object? consumer, BasicDeliverEventArgs ea)
     {
         var channel = (consumer as EventingBasicConsumer)?.Model;
-        if (channel == null || channel.IsClosed) throw new OperationCanceledException();
+        if (channel == null || channel.IsClosed) throw new OperationCanceledException("Channel closed");
+        var serviceShutdownToken = this._serviceCancellationTokenSource.Token;
 
-        string response = string.Empty;
-
-        var body = ea.Body.ToArray();
-        var props = ea.BasicProperties;
-        var replyProps = channel.CreateBasicProperties();
-        replyProps.CorrelationId = props.CorrelationId;
-
-        CancellationToken cancellationToken = this._serviceCancellationTokenSource.Token;
-        CancellationTokenSource? cts = default;
-        if (!string.IsNullOrWhiteSpace(props.Expiration) && int.TryParse(props.Expiration, out int expirationMs))
-        {
-            cts = CancellationTokenSource.CreateLinkedTokenSource(this._serviceCancellationTokenSource.Token);
-            cts.CancelAfter(expirationMs);
-            cancellationToken = cts.Token;
-        }
-
-        int? n = default;
-        try
-        {
-            var requestMessage = Encoding.UTF8.GetString(body);
-            n = int.Parse(requestMessage);
-            this._logger.LogInformation("Fib({n})", n);
-            response = Fib(n.Value, cancellationToken).ToString(CultureInfo.InvariantCulture);
-        }
-        catch (OperationCanceledException ex)
-        {
-            this._logger.LogWarning("Fib({n}) - {message}", n, ex.Message);
-            response = string.Empty;
-        }
-        catch (Exception ex)
-        {
-            this._logger.LogError(ex, "Fib({n}) - {message}", n, ex.Message);
-            response = string.Empty;
-        }
-        finally
-        {
-            var responseBytes = Encoding.UTF8.GetBytes(response);
-            channel.BasicPublish(exchange: string.Empty, routingKey: props.ReplyTo, basicProperties: replyProps, body: responseBytes);
-            channel.BasicAck(deliveryTag: ea.DeliveryTag, multiple: false);
-            cts?.Dispose();
-        }
+        var call = new RabbitRpcRequestCall(channel, ea);
+        var _ = call.DoCall(_fibService.GetFibAsync, serviceShutdownToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -114,22 +76,5 @@ public class RabbitMqServer : IHostedService
         this._serviceCancellationTokenSource.Dispose();
 
         return Task.CompletedTask;
-    }
-
-
-    /// <remarks>
-    /// Assumes only valid positive integer input.
-    /// Don't expect this one to work for big numbers, and it's probably the slowest recursive implementation possible.
-    /// </remarks>
-    private static int Fib(int n, CancellationToken cancellationToken)
-    {
-        if (n is 0 or 1)
-        {
-            return n;
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return Fib(n - 1, cancellationToken) + Fib(n - 2, cancellationToken);
     }
 }
