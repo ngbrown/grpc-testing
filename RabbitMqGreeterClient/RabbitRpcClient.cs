@@ -52,7 +52,7 @@ public class RabbitRpcClient : IDisposable
         {
             channel = connection.CreateModel();
             // declare a server-named queue
-            var replyQueueName = channel.QueueDeclare().QueueName;
+            var replyQueueName = channel.QueueDeclare(durable: false, exclusive: true, autoDelete: true).QueueName;
 
             rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyQueueName);
         }
