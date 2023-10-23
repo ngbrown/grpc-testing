@@ -12,17 +12,19 @@ public class RabbitRpcClient : IDisposable
     private readonly IModel _channel;
     private readonly string _rpcQueueName;
     private readonly string _replyQueueName;
+    private readonly string _userName;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<byte[]>> _callbackMapper = new();
     private bool _disposeConnection;
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
 
-    private RabbitRpcClient(IConnection connection, IModel channel, string rpcQueueName, string replyQueueName)
+    private RabbitRpcClient(IConnection connection, IModel channel, string rpcQueueName, string replyQueueName, string userName)
     {
         _connection = connection;
         _channel = channel;
         _rpcQueueName = rpcQueueName;
         _replyQueueName = replyQueueName;
+        _userName = userName;
     }
     
     public static RabbitRpcClient Connect(IConnectionFactory factory, string rpcQueueName)
@@ -32,7 +34,7 @@ public class RabbitRpcClient : IDisposable
         try
         {
             connection = factory.CreateConnection();
-            var rpcClient = Connect(connection, rpcQueueName);
+            var rpcClient = Connect(connection, rpcQueueName, factory.UserName);
             rpcClient._disposeConnection = true;
             return rpcClient;
         }
@@ -43,7 +45,7 @@ public class RabbitRpcClient : IDisposable
         }
     }
 
-    public static RabbitRpcClient Connect(IConnection connection, string rpcQueueName)
+    public static RabbitRpcClient Connect(IConnection connection, string rpcQueueName, string userName)
     {
         IModel? channel = null;
         RabbitRpcClient rpcClient;
@@ -54,7 +56,7 @@ public class RabbitRpcClient : IDisposable
             // declare a server-named queue
             var replyQueueName = channel.QueueDeclare(durable: false, exclusive: true, autoDelete: true).QueueName;
 
-            rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyQueueName);
+            rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyQueueName, userName);
         }
         catch (Exception)
         {
@@ -103,6 +105,8 @@ public class RabbitRpcClient : IDisposable
         props.CorrelationId = correlationId;
         props.ReplyTo = _replyQueueName;
         props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
+        props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        props.UserId = _userName;
         var tcs = new TaskCompletionSource<byte[]>();
         _callbackMapper.TryAdd(correlationId, tcs);
 

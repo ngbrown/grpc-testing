@@ -61,6 +61,7 @@ public class RabbitRpcRequestCall
         serviceShutdownToken.ThrowIfCancellationRequested();
         if (_channel == null || _channel.IsClosed) throw new OperationCanceledException("Channel closed");
 
+        replyProps.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         this._channel.BasicPublish(exchange: string.Empty, routingKey: this._props.ReplyTo, basicProperties: replyProps,
             body: responseBytes);
         this._channel.BasicAck(deliveryTag: _deliveryTag, multiple: false);
