@@ -50,6 +50,7 @@ namespace RabbitMqGreeterClient
             Console.WriteLine("Greeting: " + helloReply.Message);
 
             var rng = new Random();
+            var timeout = TimeSpan.FromSeconds(1);
             for (;;)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -58,7 +59,8 @@ namespace RabbitMqGreeterClient
                 Console.WriteLine(" [x] Requesting fib({0})", next);
                 try
                 {
-                    var fibReply = await fibClient.FibAsync(new FibonacciRequest { Max = next }, cancellationToken: cancellationToken);
+                    var fibReply = await fibClient.FibAsync(new FibonacciRequest { Max = next },
+                        deadline: DateTime.UtcNow.Add(timeout), cancellationToken: cancellationToken);
                     Console.WriteLine(" [.] Got '{0}'", fibReply.Number);
                 }
                 catch (Exception ex)
