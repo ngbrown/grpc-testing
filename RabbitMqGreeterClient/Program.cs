@@ -1,5 +1,5 @@
 ﻿using RabbitMQ.Client;
-using System.Globalization;
+using RabbitMqGreeterClient.Client;
 
 namespace RabbitMqGreeterClient
 {
@@ -41,29 +41,31 @@ namespace RabbitMqGreeterClient
         private static async Task InvokeAsync(int max, CancellationToken cancellationToken)
         {
             var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest"  };
+            using var rabbitChannel = RabbitRpcChannel.ForQueue(factory, QUEUE_NAME);
+            var greeterClient = new Greeter.GreeterClient(rabbitChannel);
+            var fibClient = new Fibonacci.FibonacciClient(rabbitChannel);
 
-            using var rpcClient = RabbitRpcClient.Connect(factory, QUEUE_NAME);
-            rpcClient.Timeout = TimeSpan.FromMilliseconds(1000);
+            var helloReply = await greeterClient.SayHelloAsync(
+                new HelloRequest { Name = $"RabbitMQ GreeterClient" }, cancellationToken: cancellationToken);
+            Console.WriteLine("Greeting: " + helloReply.Message);
+
             var rng = new Random();
-
             for (;;)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var next = NextIntBetween(rng, 2, max);
                 Console.WriteLine(" [x] Requesting fib({0})", next);
-
                 try
                 {
-                    var response = await rpcClient.CallAsync(next.ToString(CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
-                    Console.WriteLine(" [.] Got '{0}'", response);
+                    var fibReply = await fibClient.FibAsync(new FibonacciRequest { Max = next }, cancellationToken: cancellationToken);
+                    Console.WriteLine(" [.] Got '{0}'", fibReply.Number);
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.Message);
                 }
-
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
             }
         }
 

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,7 +8,22 @@
   </PropertyGroup>
 
   <ItemGroup>
+	<PackageReference Include="Google.Protobuf" Version="3.24.4" />
+	<PackageReference Include="Grpc.Net.Client" Version="2.57.0" />
+	<PackageReference Include="Grpc.Tools" Version="2.59.0">
+	  <PrivateAssets>all</PrivateAssets>
+	  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+	</PackageReference>
     <PackageReference Include="RabbitMQ.Client" Version="6.6.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RabbitRpc.Core\RabbitRpc.Core.csproj" />
+  </ItemGroup>
+
+	<ItemGroup>
+		<Protobuf Include="Protos\fib.proto" GrpcServices="Client" />
+		<Protobuf Include="Protos\greet.proto" GrpcServices="Client" />
+	</ItemGroup>
 
 </Project>

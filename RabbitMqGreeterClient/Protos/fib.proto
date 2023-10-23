@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option csharp_namespace = "RabbitMqGreeterClient";
+
+package fib;
+
+// The greeting service definition.
+service Fibonacci {
+  // Sends a greeting
+  rpc Fib (FibonacciRequest) returns (FibonacciReply);
+}
+
+// The request message containing the user's name.
+message FibonacciRequest {
+  int32 max = 1;
+}
+
+// The response message containing the greetings.
+message FibonacciReply {
+  uint64 number = 1;
+}

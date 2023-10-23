@@ -7,12 +7,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Protobuf Include="Protos\fib.proto" GrpcServices="Server" />
     <Protobuf Include="Protos\greet.proto" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore" Version="2.57.0" />
     <PackageReference Include="RabbitMQ.Client" Version="6.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RabbitRpc.Core\RabbitRpc.Core.csproj" />
   </ItemGroup>
 
 </Project>

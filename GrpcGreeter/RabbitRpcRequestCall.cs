@@ -1,19 +1,27 @@
-﻿using RabbitMQ.Client;
+﻿using Google.Protobuf;
+using Grpc.Core;
+using GrpcGreeter.RabbitGrpc.Server;
+using GrpcGreeter.RabbitGrpc.Server.Internal;
+using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitRpc.Core;
+using Status = RabbitRpc.Core.Google.Status;
 
 namespace GrpcGreeter;
 
 public class RabbitRpcRequestCall
 {
     private readonly IModel _channel;
+    private readonly IServiceProvider _requestServices;
     private readonly byte[] _body;
     private readonly IBasicProperties _props;
     private readonly ulong _deliveryTag;
     private readonly TimeSpan? _timeout;
 
-    public RabbitRpcRequestCall(IModel channel, BasicDeliverEventArgs ea)
+    public RabbitRpcRequestCall(IModel channel, BasicDeliverEventArgs ea, IServiceProvider requestServices)
     {
         _channel = channel;
+        _requestServices = requestServices;
         _body = ea.Body.ToArray();
         _props = ea.BasicProperties;
         _deliveryTag = ea.DeliveryTag;
@@ -25,11 +33,11 @@ public class RabbitRpcRequestCall
         }
     }
 
-    public async Task DoCall(Func<byte[], CancellationToken, Task<byte[]>> method,
-        CancellationToken serviceShutdownToken)
+    public async Task DoCall(MessageDelegate messageDelegate, CancellationToken serviceShutdownToken)
     {
         var replyProps = this._channel.CreateBasicProperties();
         replyProps.CorrelationId = this._props.CorrelationId;
+        replyProps.ContentType = RabbitGrpcProtocolConstants.ResponseContentType;
 
         CancellationTokenSource? cts = default;
         CancellationToken cancellationToken;
@@ -44,14 +52,21 @@ public class RabbitRpcRequestCall
             cancellationToken = serviceShutdownToken;
         }
 
-        byte[] responseBytes = { 0x00 };
+        byte[] responseBytes;
         try
         {
-            responseBytes = await method(this._body, cancellationToken).ConfigureAwait(false);
+            var rpcRequest = new RabbitRpcRequest();
+            rpcRequest.MergeFrom(_body);
+
+            var context = new RpcContext(rpcRequest, _requestServices, cancellationToken);
+            await messageDelegate(context).ConfigureAwait(false);
+
+            responseBytes = context.Response.ToByteArray();
         }
         catch (Exception ex)
         {
-            responseBytes = new byte[] { 0x00 };
+            responseBytes = new RabbitRpcResponse
+                { Status = new Status { Code = (int)StatusCode.Internal, Message = ex.Message } }.ToByteArray();
         }
         finally
         {

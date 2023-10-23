@@ -1,24 +1,31 @@
-﻿using RabbitMQ.Client;
+using Google.Protobuf;
+using Grpc.Core;
+using GrpcGreeter.RabbitGrpc.Server.Internal;
+using GrpcGreeter.RabbitGrpc.Server.Model.Internal;
+using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitRpc.Core;
 
 namespace GrpcGreeter;
 
-public class RabbitMqServer : IHostedService
+internal class RabbitMqServer : IHostedService
 {
     private const string QUEUE_NAME = "rpc_queue";
 
-    private readonly FibService _fibService;
+    private readonly ServiceMethodsRegistry _serviceMethodsRegistry;
     private readonly ILogger<RabbitMqServer> _logger;
 
     private IConnection? _connection;
     private readonly List<IModel> _channels = new();
     private ushort _parallelCount = 4;
     private readonly CancellationTokenSource _serviceCancellationTokenSource = new();
+    private IServiceProvider _serviceProvider;
 
-    public RabbitMqServer(FibService fibService, ILogger<RabbitMqServer> logger)
+    public RabbitMqServer(ServiceMethodsRegistry serviceMethodsRegistry, ILogger<RabbitMqServer> logger, IServiceProvider serviceProvider)
     {
-        _fibService = fibService;
+        _serviceMethodsRegistry = serviceMethodsRegistry;
         _logger = logger;
+        _serviceProvider = serviceProvider;
     }
 
     public Task StartAsync(CancellationToken cancellationToken = default)
@@ -60,8 +67,40 @@ public class RabbitMqServer : IHostedService
         if (channel == null || channel.IsClosed) throw new OperationCanceledException("Channel closed");
         var serviceShutdownToken = this._serviceCancellationTokenSource.Token;
 
-        var call = new RabbitRpcRequestCall(channel, ea);
-        var _ = call.DoCall(_fibService.GetFibAsync, serviceShutdownToken);
+        var body = ea.Body.ToArray();
+
+        try
+        {
+            var request = new RabbitRpcRequest();
+            request.MergeFrom(body);
+
+            var methodModel = _serviceMethodsRegistry.Methods.Find(m => m.Method.ServiceName == request.ServiceName && m.Method.FullName == request.MethodName);
+            if (methodModel != null)
+            {
+                var call = new RabbitRpcRequestCall(channel, ea, _serviceProvider);
+                var _ = call.DoCall(methodModel.RequestDelegate, serviceShutdownToken);
+            }
+            else
+            {
+                ReplyNotFound(channel, ea.BasicProperties, ea.DeliveryTag);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+    }
+
+    private static void ReplyNotFound(IModel channel, IBasicProperties props, ulong deliveryTag)
+    {
+        var replyProps = channel.CreateBasicProperties();
+        replyProps.CorrelationId = props.CorrelationId;
+        replyProps.ContentType = RabbitGrpcProtocolConstants.ResponseContentType;
+        var responseBytes = new RabbitRpcResponse
+            { Status = new RabbitRpc.Core.Google.Status { Code = (int)StatusCode.NotFound, } }.ToByteArray();
+        channel.BasicPublish(exchange: string.Empty, routingKey: props.ReplyTo, basicProperties: replyProps,
+            body: responseBytes);
+        channel.BasicAck(deliveryTag: deliveryTag, multiple: false);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

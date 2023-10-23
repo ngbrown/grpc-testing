@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package rabbit.rpc;
+
+import "Protos/Google/status.proto";
+
+option csharp_namespace = "RabbitRpc.Core";
+
+message RabbitRpcRequest {
+	string service_name = 1;
+	string method_name = 2;
+	repeated RabbitRpcHeader headers = 3;
+	bytes body = 4;
+}
+
+message RabbitRpcResponse {
+	google.rpc.Status status = 1;
+	repeated RabbitRpcHeader headers = 2;
+	bytes body = 3;
+}
+
+// Represents a Rabbit RPC Message header.
+message RabbitRpcHeader {
+  // The Rabbit RPC header key. It is case insensitive.
+  string key = 1;
+
+  // The Rabbit RPC header value.
+  string value = 2;
+}

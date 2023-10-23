@@ -3,11 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.7.34202.233
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GrpcGreeter", "GrpcGreeter\GrpcGreeter.csproj", "{8D4DDA0D-FDB3-487A-92F1-8CD80970DCED}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GrpcGreeter", "GrpcGreeter\GrpcGreeter.csproj", "{8D4DDA0D-FDB3-487A-92F1-8CD80970DCED}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GrpcGreeterClient", "GrpcGreeterClient\GrpcGreeterClient.csproj", "{B71D1CB2-241A-4063-BED4-31C1F1F9EA7E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GrpcGreeterClient", "GrpcGreeterClient\GrpcGreeterClient.csproj", "{B71D1CB2-241A-4063-BED4-31C1F1F9EA7E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RabbitMqGreeterClient", "RabbitMqGreeterClient\RabbitMqGreeterClient.csproj", "{09378D71-6635-425B-86EE-28925306908A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RabbitMqGreeterClient", "RabbitMqGreeterClient\RabbitMqGreeterClient.csproj", "{09378D71-6635-425B-86EE-28925306908A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RabbitRpc.Core", "RabbitRpc.Core\RabbitRpc.Core.csproj", "{6B6C12DE-DA2B-450C-A89A-7A4D762F1724}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{09378D71-6635-425B-86EE-28925306908A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{09378D71-6635-425B-86EE-28925306908A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{09378D71-6635-425B-86EE-28925306908A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6B6C12DE-DA2B-450C-A89A-7A4D762F1724}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6B6C12DE-DA2B-450C-A89A-7A4D762F1724}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6B6C12DE-DA2B-450C-A89A-7A4D762F1724}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6B6C12DE-DA2B-450C-A89A-7A4D762F1724}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

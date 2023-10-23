@@ -1,3 +1,4 @@
+using GrpcGreeter.RabbitGrpc.Server;
 using GrpcGreeter.Services;
 
 namespace GrpcGreeter
@@ -13,11 +14,12 @@ namespace GrpcGreeter
 
             // Add services to the container.
             builder.Services.AddGrpc();
-
-            builder.Services.AddSingleton<FibService>();
-            builder.Services.AddHostedService<RabbitMqServer>();
+            builder.Services.AddRabbitGrpc();
 
             var app = builder.Build();
+
+            app.RegisterRabbitRpcService<GreeterService>();
+            app.RegisterRabbitRpcService<FibonacciService>();
 
             // Configure the HTTP request pipeline.
             app.MapGrpcService<GreeterService>();

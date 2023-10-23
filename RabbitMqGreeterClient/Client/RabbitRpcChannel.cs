@@ -1,40 +1,54 @@
 ﻿using System.Collections.Concurrent;
 using System.Globalization;
-using System.Text;
+using Google.Protobuf;
+using Grpc.Core;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMqGreeterClient.Client.Internal;
+using RabbitRpc.Core;
 
-namespace RabbitMqGreeterClient;
+namespace RabbitMqGreeterClient.Client;
 
-public class RabbitRpcClient : IDisposable
+internal class RabbitRpcChannel : Grpc.Core.ChannelBase, IDisposable
 {
     private readonly IConnection _connection;
     private readonly IModel _channel;
     private readonly string _rpcQueueName;
     private readonly string _replyQueueName;
     private readonly string _userName;
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<byte[]>> _callbackMapper = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<RabbitRpcResponse>> _callbackMapper = new();
     private bool _disposeConnection;
-
+    
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
+    public bool Disposed { get; private set; }
+    internal ILoggerFactory LoggerFactory { get; }
+    internal ILogger Logger { get; }
 
-    private RabbitRpcClient(IConnection connection, IModel channel, string rpcQueueName, string replyQueueName, string userName)
+
+    internal bool DisableClientDeadline;
+    internal long MaxTimerDueTime = uint.MaxValue - 1; // Max System.Threading.Timer due time
+
+    public RabbitRpcChannel(IConnection connection, IModel channel, string rpcQueueName, string replyQueueName, string userName) : base(connection.Endpoint.HostName)
     {
         _connection = connection;
         _channel = channel;
         _rpcQueueName = rpcQueueName;
         _replyQueueName = replyQueueName;
         _userName = userName;
+        LoggerFactory = NullLoggerFactory.Instance;
+        Logger = LoggerFactory.CreateLogger(typeof(RabbitRpcChannel));
     }
-    
-    public static RabbitRpcClient Connect(IConnectionFactory factory, string rpcQueueName)
+
+    public static RabbitRpcChannel ForQueue(IConnectionFactory factory, string rpcQueueName)
     {
         IConnection? connection = null;
 
         try
         {
             connection = factory.CreateConnection();
-            var rpcClient = Connect(connection, rpcQueueName, factory.UserName);
+            var rpcClient = ForConnection(connection, rpcQueueName, factory.UserName);
             rpcClient._disposeConnection = true;
             return rpcClient;
         }
@@ -45,10 +59,10 @@ public class RabbitRpcClient : IDisposable
         }
     }
 
-    public static RabbitRpcClient Connect(IConnection connection, string rpcQueueName, string userName)
+    public static RabbitRpcChannel ForConnection(IConnection connection, string rpcQueueName, string userName)
     {
         IModel? channel = null;
-        RabbitRpcClient rpcClient;
+        RabbitRpcChannel rpcChannel;
 
         try
         {
@@ -56,7 +70,7 @@ public class RabbitRpcClient : IDisposable
             // declare a server-named queue
             var replyQueueName = channel.QueueDeclare(durable: false, exclusive: true, autoDelete: true).QueueName;
 
-            rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyQueueName, userName);
+            rpcChannel = new RabbitRpcChannel(connection, channel, rpcQueueName, replyQueueName, userName);
         }
         catch (Exception)
         {
@@ -66,48 +80,57 @@ public class RabbitRpcClient : IDisposable
 
         try
         {
-            var consumer = new EventingBasicConsumer(rpcClient._channel);
-            consumer.Received += rpcClient.OnMessageReceived;
+            var consumer = new EventingBasicConsumer(rpcChannel._channel);
+            consumer.Received += rpcChannel.OnMessageReceived;
 
-            rpcClient._channel.BasicConsume(consumer: consumer,
-                queue: rpcClient._replyQueueName,
+            rpcChannel._channel.BasicConsume(consumer: consumer,
+                queue: rpcChannel._replyQueueName,
                 autoAck: true);
         }
         catch (Exception)
         {
-            rpcClient.Dispose();
+            rpcChannel.Dispose();
             throw;
         }
 
-        return rpcClient;
+        return rpcChannel;
     }
 
     private void OnMessageReceived(object? model, BasicDeliverEventArgs ea)
     {
         if (!_callbackMapper.TryRemove(ea.BasicProperties.CorrelationId, out var tcs)) return;
 
-        var body = ea.Body.ToArray();
-        tcs.TrySetResult(body);
+        var response = new RabbitRpcResponse();
+        response.MergeFrom(ea.Body.Span);
+        if (ea.BasicProperties.IsHeadersPresent())
+        {
+            foreach (var (key, value) in ea.BasicProperties.Headers)
+            {
+                if (key != null && value is string s)
+                {
+                    response.Headers.Add(new RabbitRpcHeader { Key = key, Value = s });
+                }
+            }
+        }
+        tcs.TrySetResult(response);
     }
 
-    public async Task<string> CallAsync(string message, CancellationToken cancellationToken = default)
+    public override CallInvoker CreateCallInvoker()
     {
-        var messageBytes = Encoding.UTF8.GetBytes(message);
-        var body = await CallAsync(messageBytes, cancellationToken);
-        var response = Encoding.UTF8.GetString(body);
-        return response;
+        return new RabbitRpcCallInvoker(this);
     }
 
-    public async Task<byte[]> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
+    internal async Task<RabbitRpcResponse> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
     {
         IBasicProperties props = _channel.CreateBasicProperties();
         var correlationId = Guid.NewGuid().ToString();
         props.CorrelationId = correlationId;
         props.ReplyTo = _replyQueueName;
         props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
+        props.ContentType = "application/x-protobuf; messageType=\"rabbit.rpc.RabbitRpcRequest\"";
         props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         props.UserId = _userName;
-        var tcs = new TaskCompletionSource<byte[]>();
+        var tcs = new TaskCompletionSource<RabbitRpcResponse>();
         _callbackMapper.TryAdd(correlationId, tcs);
 
         _channel.BasicPublish(exchange: string.Empty,
@@ -195,10 +218,19 @@ public class RabbitRpcClient : IDisposable
         }
     }
 
+    protected override Task ShutdownAsyncCore()
+    {
+        _channel.Close();
+        if (_disposeConnection) _connection.Close();
+        return Task.CompletedTask;
+    }
+
     public void Dispose()
     {
         _channel.Dispose();
 
         if (_disposeConnection) _connection.Dispose();
+
+        Disposed = true;
     }
 }
