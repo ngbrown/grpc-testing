@@ -40,10 +40,11 @@ namespace RabbitMqGreeterClient
 
         private static async Task InvokeAsync(int max, CancellationToken cancellationToken)
         {
+            var timeout = TimeSpan.FromMilliseconds(1000);
             var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest"  };
 
             using var rpcClient = RabbitRpcClient.Connect(factory, QUEUE_NAME);
-            rpcClient.Timeout = TimeSpan.FromMilliseconds(1000);
+            rpcClient.Timeout = timeout;
             var rng = new Random();
 
             for (;;)
@@ -63,7 +64,7 @@ namespace RabbitMqGreeterClient
                     Console.WriteLine(ex.Message);
                 }
 
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
             }
         }
 

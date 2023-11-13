@@ -8,6 +8,8 @@ namespace RabbitMqGreeterClient;
 
 public class RabbitRpcClient : IDisposable
 {
+    private static readonly ushort PrefetchCount = 4 * 4;
+
     private readonly IConnection _connection;
     private readonly IModel _channel;
     private readonly string _rpcQueueName;
@@ -53,6 +55,7 @@ public class RabbitRpcClient : IDisposable
         try
         {
             channel = connection.CreateModel();
+            channel.BasicQos(0, PrefetchCount, false);
             // declare a server-named queue
             var replyQueueName = channel.QueueDeclare(durable: false, exclusive: true, autoDelete: true).QueueName;
 
@@ -100,13 +103,8 @@ public class RabbitRpcClient : IDisposable
 
     public async Task<byte[]> CallAsync(ReadOnlyMemory<byte> messageBytes, CancellationToken cancellationToken = default)
     {
-        IBasicProperties props = _channel.CreateBasicProperties();
         var correlationId = Guid.NewGuid().ToString();
-        props.CorrelationId = correlationId;
-        props.ReplyTo = _replyQueueName;
-        props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
-        props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        props.UserId = _userName;
+        var props = CreateRequestProperties(correlationId);
         var tcs = new TaskCompletionSource<byte[]>();
         _callbackMapper.TryAdd(correlationId, tcs);
 
@@ -142,6 +140,17 @@ public class RabbitRpcClient : IDisposable
         {
             cts.Dispose();
         }
+    }
+
+    private IBasicProperties CreateRequestProperties(string correlationId)
+    {
+        IBasicProperties props = _channel.CreateBasicProperties();
+        props.CorrelationId = correlationId;
+        props.ReplyTo = _replyQueueName;
+        props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
+        props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        props.UserId = _userName;
+        return props;
     }
 
     /// <summary>
