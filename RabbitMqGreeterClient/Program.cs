@@ -1,4 +1,6 @@
-﻿using RabbitMQ.Client;
+﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using RabbitMQ.Client;
 using System.Globalization;
 
 namespace RabbitMqGreeterClient
@@ -38,6 +40,7 @@ namespace RabbitMqGreeterClient
             return 0;
         }
 
+        [SuppressMessage("ReSharper", "FunctionNeverReturns")]
         private static async Task InvokeAsync(int max, CancellationToken cancellationToken)
         {
             var timeout = TimeSpan.FromMilliseconds(1000);
@@ -56,8 +59,10 @@ namespace RabbitMqGreeterClient
 
                 try
                 {
+                    var stopwatch = Stopwatch.StartNew();
                     var response = await rpcClient.CallAsync(next.ToString(CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
-                    Console.WriteLine(" [.] Got '{0}'", response);
+                    stopwatch.Stop();
+                    Console.WriteLine(" [.] Got '{0}' in {1:N2} ms", response, stopwatch.Elapsed.TotalMilliseconds);
                 }
                 catch (Exception ex)
                 {

@@ -61,6 +61,7 @@ public class RabbitMqServer : IHostedService
         if (channel == null || channel.IsClosed) throw new OperationCanceledException("Channel closed");
         var serviceShutdownToken = this._serviceCancellationTokenSource.Token;
 
+        this._logger.LogInformation("Received RPC request");
         var call = new RabbitRpcRequestCall(channel, ea);
         await call.DoCall(_fibService.GetFibAsync, serviceShutdownToken);
     }
