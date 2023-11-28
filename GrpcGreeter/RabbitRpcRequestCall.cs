@@ -6,14 +6,16 @@ namespace GrpcGreeter;
 public class RabbitRpcRequestCall
 {
     private readonly IModel _channel;
+    private readonly string _replyExchangeName;
     private readonly byte[] _body;
     private readonly IBasicProperties _props;
     private readonly ulong _deliveryTag;
     private readonly TimeSpan? _timeout;
 
-    public RabbitRpcRequestCall(IModel channel, BasicDeliverEventArgs ea)
+    public RabbitRpcRequestCall(IModel channel, BasicDeliverEventArgs ea, string replyExchangeName)
     {
         _channel = channel;
+        _replyExchangeName = replyExchangeName;
         _body = ea.Body.ToArray();
         _props = ea.BasicProperties;
         _deliveryTag = ea.DeliveryTag;
@@ -62,7 +64,7 @@ public class RabbitRpcRequestCall
         if (_channel == null || _channel.IsClosed) throw new OperationCanceledException("Channel closed");
 
         replyProps.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        this._channel.BasicPublish(exchange: string.Empty, routingKey: this._props.ReplyTo, basicProperties: replyProps,
+        this._channel.BasicPublish(exchange: this._replyExchangeName, routingKey: this._props.ReplyTo, basicProperties: replyProps,
             body: responseBytes);
         this._channel.BasicAck(deliveryTag: _deliveryTag, multiple: false);
     }

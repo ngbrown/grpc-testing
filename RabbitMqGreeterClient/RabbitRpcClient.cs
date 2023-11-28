@@ -13,6 +13,7 @@ public class RabbitRpcClient : IDisposable
     private readonly IConnection _connection;
     private readonly IModel _channel;
     private readonly string _rpcQueueName;
+    private readonly string _replyRoutingKey;
     private readonly string _replyQueueName;
     private readonly string _userName;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<byte[]>> _callbackMapper = new();
@@ -20,11 +21,13 @@ public class RabbitRpcClient : IDisposable
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
 
-    private RabbitRpcClient(IConnection connection, IModel channel, string rpcQueueName, string replyQueueName, string userName)
+    private RabbitRpcClient(IConnection connection, IModel channel, string rpcQueueName, string replyRoutingKey,
+        string replyQueueName, string userName)
     {
         _connection = connection;
         _channel = channel;
         _rpcQueueName = rpcQueueName;
+        _replyRoutingKey = replyRoutingKey;
         _replyQueueName = replyQueueName;
         _userName = userName;
     }
@@ -56,10 +59,14 @@ public class RabbitRpcClient : IDisposable
         {
             channel = connection.CreateModel();
             channel.BasicQos(0, PrefetchCount, false);
-            // declare a server-named queue
-            var replyQueueName = channel.QueueDeclare(durable: false, exclusive: true, autoDelete: true).QueueName;
+            // connect to the server-named exchange
+            var replyQueue = channel.QueueDeclare(durable: false, exclusive: true, autoDelete: true);
+            var replyExchangeName = $"{rpcQueueName}-response";
+            var replyRoutingKey = Guid.NewGuid().ToString();
+            var replyQueueName = replyQueue.QueueName;
+            channel.QueueBind(replyQueueName, replyExchangeName, replyRoutingKey);
 
-            rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyQueueName, userName);
+            rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyRoutingKey, replyQueueName, userName);
         }
         catch (Exception)
         {
@@ -146,7 +153,7 @@ public class RabbitRpcClient : IDisposable
     {
         IBasicProperties props = _channel.CreateBasicProperties();
         props.CorrelationId = correlationId;
-        props.ReplyTo = _replyQueueName;
+        props.ReplyTo = _replyRoutingKey;
         props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
         props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         props.UserId = _userName;

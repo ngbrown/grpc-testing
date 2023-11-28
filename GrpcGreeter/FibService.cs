@@ -14,7 +14,7 @@ public class FibService
 
     public async Task<byte[]> GetFibAsync(byte[] body, CancellationToken cancellationToken)
     {
-        await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        //await Task.Delay(100, cancellationToken).ConfigureAwait(false);
 
         string response;
         int? n = default;

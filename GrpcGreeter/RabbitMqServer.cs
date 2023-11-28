@@ -14,11 +14,13 @@ public class RabbitMqServer : IHostedService
     private readonly List<IModel> _channels = new();
     private ushort _parallelCount = 4;
     private readonly CancellationTokenSource _serviceCancellationTokenSource = new();
+    private readonly string _replyExchangeName;
 
     public RabbitMqServer(FibService fibService, ILogger<RabbitMqServer> logger)
     {
         _fibService = fibService;
         _logger = logger;
+        _replyExchangeName = $"{QUEUE_NAME}-response";
     }
 
     public Task StartAsync(CancellationToken cancellationToken = default)
@@ -35,10 +37,15 @@ public class RabbitMqServer : IHostedService
             if (i == 0)
             {
                 channel.QueueDeclare(queue: QUEUE_NAME,
-                    durable: false,
+                    durable: true,
                     exclusive: false,
                     autoDelete: false,
                     arguments: null);
+                channel.ExchangeDeclare(exchange: _replyExchangeName,
+                    durable: true,
+                    autoDelete: false,
+                    arguments: null,
+                    type: ExchangeType.Direct);
             }
 
             channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
@@ -62,7 +69,7 @@ public class RabbitMqServer : IHostedService
         var serviceShutdownToken = this._serviceCancellationTokenSource.Token;
 
         this._logger.LogInformation("Received RPC request");
-        var call = new RabbitRpcRequestCall(channel, ea);
+        var call = new RabbitRpcRequestCall(channel, ea, this._replyExchangeName);
         await call.DoCall(_fibService.GetFibAsync, serviceShutdownToken);
     }
 
