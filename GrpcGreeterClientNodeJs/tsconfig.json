@@ -1,0 +1,13 @@
+{
+  // Install @tsconfig/node18: https://github.com/tsconfig/bases
+  "extends": "@tsconfig/node18/tsconfig.json",
+
+  "include": ["./src/*.ts"],
+
+  "compilerOptions": {
+    // typescript options here
+    "strictNullChecks": true,
+    "sourceMap": true,
+    "outDir": "./dist"
+  }
+}
