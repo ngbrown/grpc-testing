@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "build": "npm run build:protoc && tsc",
-    "build:protoc": "protoc --ts_out ./src/gen --ts_opt eslint_disable --ts_opt ts_nocheck --ts_opt long_type_string --ts_opt client_grpc1 --proto_path ./Protos ./Protos/greet.proto",
+    "build:protoc": "protoc --ts_out ./src/gen --ts_opt eslint_disable --ts_opt ts_nocheck --ts_opt long_type_string --proto_path ./Protos ./Protos/greet.proto",
     "dev": "vite-node ./src/index.ts",
     "start": "node ./dist/index.js"
   },
@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.10.11",
+    "@protobuf-ts/grpc-transport": "^2.9.4",
     "@protobuf-ts/runtime": "^2.9.4"
   }
 }

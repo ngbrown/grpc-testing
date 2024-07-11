@@ -1,14 +1,21 @@
 import * as grpc from "@grpc/grpc-js";
-import { GreeterClient } from "./gen/greet.grpc-client.js";
+import { GreeterClient } from "./gen/greet.client.js";
+import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 
-function main() {
-  const client = new GreeterClient(
-    "localhost:5274",
-    grpc.credentials.createInsecure()
-  );
-  client.sayHello({ name: "node" }, (err, response) => {
-    console.log(response?.message ?? err);
-  });
+const transport = new GrpcTransport({
+  host: "localhost:5274",
+
+  // Use h2c unencrypted instead of https
+  channelCredentials: grpc.credentials.createInsecure(),
+
+  // Interceptors apply to all calls running through this transport.
+  interceptors: [],
+});
+
+async function main() {
+  const client = new GreeterClient(transport);
+  const res = await client.sayHello({ name: "node" });
+  console.log(res.response.message);
 }
 
-main();
+void main();
