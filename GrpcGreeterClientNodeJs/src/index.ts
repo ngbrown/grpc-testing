@@ -1,22 +1,14 @@
-import { createPromiseClient } from "@connectrpc/connect";
-import { createGrpcTransport } from "@connectrpc/connect-node";
-import { Greeter } from "./gen/greet_connect.js";
+import * as grpc from "@grpc/grpc-js";
+import { GreeterClient } from "./gen/greet.grpc-client.js";
 
-const transport = createGrpcTransport({
-  // Requests will be made to <baseUrl>/<package>.<service>/method
-  baseUrl: "http://localhost:5274",
-
-  // You have to tell the Node.js http API which HTTP version to use.
-  httpVersion: "2",
-
-  // Interceptors apply to all calls running through this transport.
-  interceptors: [],
-});
-
-async function main() {
-  const client = createPromiseClient(Greeter, transport);
-  const res = await client.sayHello({ name: "node" });
-  console.log(res.message);
+function main() {
+  const client = new GreeterClient(
+    "localhost:5274",
+    grpc.credentials.createInsecure()
+  );
+  client.sayHello({ name: "node" }, (err, response) => {
+    console.log(response?.message ?? err);
+  });
 }
 
-void main();
+main();

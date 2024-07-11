@@ -5,22 +5,20 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "build": "buf generate && tsc",
+    "build": "npm run build:protoc && tsc",
+    "build:protoc": "protoc --ts_out ./src/gen --ts_opt eslint_disable --ts_opt ts_nocheck --ts_opt long_type_string --ts_opt client_grpc1 --proto_path ./Protos ./Protos/greet.proto",
     "dev": "vite-node ./src/index.ts",
     "start": "node ./dist/index.js"
   },
   "devDependencies": {
-    "@bufbuild/buf": "^1.34.0",
-    "@bufbuild/protoc-gen-es": "^1.10.0",
-    "@connectrpc/protoc-gen-connect-es": "^1.4.0",
+    "@protobuf-ts/plugin": "^2.9.4",
     "@tsconfig/node18": "^18.2.4",
     "prettier": "^3.3.2",
     "typescript": "^5.5.3",
     "vite-node": "^2.0.2"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^1.10.0",
-    "@connectrpc/connect": "^1.4.0",
-    "@connectrpc/connect-node": "^1.4.0"
+    "@grpc/grpc-js": "^1.10.11",
+    "@protobuf-ts/runtime": "^2.9.4"
   }
 }
