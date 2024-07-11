@@ -7,7 +7,9 @@ namespace GrpcGreeterClient
         private static async Task Main(string[] args)
         {
             // The port number must match the port of the gRPC server.
-            using var channel = GrpcChannel.ForAddress("https://localhost:7028");
+            //using var channel = GrpcChannel.ForAddress("https://localhost:7028");
+            using var channel = GrpcChannel.ForAddress("http://localhost:5274");
+
             var client = new Greeter.GreeterClient(channel);
             var reply = await client.SayHelloAsync(
                 new HelloRequest { Name = "GreeterClient" });
