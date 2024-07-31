@@ -1,6 +1,6 @@
 import { Code, ConnectError, createPromiseClient } from "@connectrpc/connect";
 import { createGrpcTransport } from "@connectrpc/connect-node";
-import { Greeter } from "./gen/greet_connect.js";
+import { Greeter } from "./gen/greet_pb.js";
 
 const transport = createGrpcTransport({
   // Requests will be made to <baseUrl>/<package>.<service>/method
