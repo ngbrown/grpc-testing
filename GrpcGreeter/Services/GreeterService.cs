@@ -13,6 +13,12 @@ namespace GrpcGreeter.Services
 
         public override Task<HelloReply> SayHello(HelloRequest request, ServerCallContext context)
         {
+            if (string.Equals(request.Name, "nobody", StringComparison.InvariantCultureIgnoreCase))
+            {
+                throw new RpcException(new Status(StatusCode.PermissionDenied,
+                    $"Unable to say hello to '{request.Name}'"));
+            }
+
             return Task.FromResult(new HelloReply
             {
                 Message = "Hello " + request.Name
