@@ -11,7 +11,7 @@ public class RabbitMqServer : IHostedService
     private readonly ILogger<RabbitMqServer> _logger;
 
     private IConnection? _connection;
-    private readonly List<IModel> _channels = new();
+    private readonly List<IChannel> _channels = new();
     private ushort _parallelCount = 4;
     private readonly CancellationTokenSource _serviceCancellationTokenSource = new();
     private readonly string _replyExchangeName;
@@ -23,48 +23,49 @@ public class RabbitMqServer : IHostedService
         _replyExchangeName = $"{QUEUE_NAME}-response";
     }
 
-    public Task StartAsync(CancellationToken cancellationToken = default)
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         var factory = new ConnectionFactory
-            { HostName = "localhost", UserName = "guest", Password = "guest", DispatchConsumersAsync = true, };
-        _connection = factory.CreateConnection();
+            { HostName = "localhost", UserName = "guest", Password = "guest", };
+        _connection = await factory.CreateConnectionAsync(cancellationToken);
 
         for (int i = 0; i < _parallelCount; i++)
         {
-            var channel = _connection.CreateModel();
+            var channel = await _connection.CreateChannelAsync(cancellationToken: cancellationToken);
             this._channels.Add(channel);
 
             if (i == 0)
             {
-                channel.QueueDeclare(queue: QUEUE_NAME,
+                await channel.QueueDeclareAsync(queue: QUEUE_NAME,
                     durable: true,
                     exclusive: false,
                     autoDelete: false,
-                    arguments: null);
-                channel.ExchangeDeclare(exchange: _replyExchangeName,
+                    arguments: null,
+                    cancellationToken: cancellationToken);
+                await channel.ExchangeDeclareAsync(exchange: _replyExchangeName,
                     durable: true,
                     autoDelete: false,
                     arguments: null,
-                    type: ExchangeType.Direct);
+                    type: ExchangeType.Direct,
+                    cancellationToken: cancellationToken);
             }
 
-            channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+            await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, cancellationToken);
 
             var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.Received += OnMessageReceivedAsync;
-            channel.BasicConsume(queue: QUEUE_NAME,
+            await channel.BasicConsumeAsync(queue: QUEUE_NAME,
                 autoAck: false,
-                consumer: consumer);
+                consumer: consumer,
+                cancellationToken: cancellationToken);
         }
 
         this._logger.LogInformation("Awaiting RPC requests");
-
-        return Task.CompletedTask;
     }
 
     private async Task OnMessageReceivedAsync(object? consumer, BasicDeliverEventArgs ea)
     {
-        var channel = (consumer as IBasicConsumer)?.Model;
+        var channel = (consumer as IAsyncBasicConsumer)?.Channel;
         if (channel == null || channel.IsClosed) throw new OperationCanceledException("Channel closed");
         var serviceShutdownToken = this._serviceCancellationTokenSource.Token;
 

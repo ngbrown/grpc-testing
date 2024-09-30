@@ -11,7 +11,7 @@ public class RabbitRpcClient : IDisposable
     private static readonly ushort PrefetchCount = 4 * 4;
 
     private readonly IConnection _connection;
-    private readonly IModel _channel;
+    private readonly IChannel _channel;
     private readonly string _rpcQueueName;
     private readonly string _replyRoutingKey;
     private readonly string _replyQueueName;
@@ -21,7 +21,7 @@ public class RabbitRpcClient : IDisposable
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
 
-    private RabbitRpcClient(IConnection connection, IModel channel, string rpcQueueName, string replyRoutingKey,
+    private RabbitRpcClient(IConnection connection, IChannel channel, string rpcQueueName, string replyRoutingKey,
         string replyQueueName, string userName)
     {
         _connection = connection;
@@ -32,14 +32,14 @@ public class RabbitRpcClient : IDisposable
         _userName = userName;
     }
     
-    public static RabbitRpcClient Connect(IConnectionFactory factory, string rpcQueueName)
+    public static async Task<RabbitRpcClient> ConnectAsync(IConnectionFactory factory, string rpcQueueName, CancellationToken cancellationToken = default)
     {
         IConnection? connection = null;
 
         try
         {
-            connection = factory.CreateConnection();
-            var rpcClient = Connect(connection, rpcQueueName, factory.UserName);
+            connection = await factory.CreateConnectionAsync(cancellationToken);
+            var rpcClient = await ConnectAsync(connection, rpcQueueName, factory.UserName, cancellationToken);
             rpcClient._disposeConnection = true;
             return rpcClient;
         }
@@ -50,21 +50,21 @@ public class RabbitRpcClient : IDisposable
         }
     }
 
-    public static RabbitRpcClient Connect(IConnection connection, string rpcQueueName, string userName)
+    public static async Task<RabbitRpcClient> ConnectAsync(IConnection connection, string rpcQueueName, string userName, CancellationToken cancellationToken = default)
     {
-        IModel? channel = null;
+        IChannel? channel = null;
         RabbitRpcClient rpcClient;
 
         try
         {
-            channel = connection.CreateModel();
-            channel.BasicQos(0, PrefetchCount, false);
+            channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+            await channel.BasicQosAsync(0, PrefetchCount, false, cancellationToken);
             // connect to the server-named exchange
-            var replyQueue = channel.QueueDeclare(durable: false, exclusive: true, autoDelete: true);
+            var replyQueue = await channel.QueueDeclareAsync(durable: false, exclusive: true, autoDelete: true, cancellationToken: cancellationToken);
             var replyExchangeName = $"{rpcQueueName}-response";
             var replyRoutingKey = Guid.NewGuid().ToString();
             var replyQueueName = replyQueue.QueueName;
-            channel.QueueBind(replyQueueName, replyExchangeName, replyRoutingKey);
+            await channel.QueueBindAsync(replyQueueName, replyExchangeName, replyRoutingKey, cancellationToken: cancellationToken);
 
             rpcClient = new RabbitRpcClient(connection, channel, rpcQueueName, replyRoutingKey, replyQueueName, userName);
         }
@@ -76,12 +76,13 @@ public class RabbitRpcClient : IDisposable
 
         try
         {
-            var consumer = new EventingBasicConsumer(rpcClient._channel);
+            var consumer = new AsyncEventingBasicConsumer(rpcClient._channel);
             consumer.Received += rpcClient.OnMessageReceived;
 
-            rpcClient._channel.BasicConsume(consumer: consumer,
+            await rpcClient._channel.BasicConsumeAsync(consumer: consumer,
                 queue: rpcClient._replyQueueName,
-                autoAck: true);
+                autoAck: true,
+                cancellationToken: cancellationToken);
         }
         catch (Exception)
         {
@@ -92,12 +93,14 @@ public class RabbitRpcClient : IDisposable
         return rpcClient;
     }
 
-    private void OnMessageReceived(object? model, BasicDeliverEventArgs ea)
+    private Task OnMessageReceived(object? model, BasicDeliverEventArgs ea)
     {
-        if (!_callbackMapper.TryRemove(ea.BasicProperties.CorrelationId, out var tcs)) return;
+        if (!_callbackMapper.TryRemove(ea.BasicProperties.CorrelationId, out var tcs)) return Task.CompletedTask;
 
         var body = ea.Body.ToArray();
         tcs.TrySetResult(body);
+
+        return Task.CompletedTask;
     }
 
     public async Task<string> CallAsync(string message, CancellationToken cancellationToken = default)
@@ -115,10 +118,12 @@ public class RabbitRpcClient : IDisposable
         var tcs = new TaskCompletionSource<byte[]>();
         _callbackMapper.TryAdd(correlationId, tcs);
 
-        _channel.BasicPublish(exchange: string.Empty,
+        await _channel.BasicPublishAsync(exchange: string.Empty,
             routingKey: _rpcQueueName,
             basicProperties: props,
-            body: messageBytes);
+            body: messageBytes,
+            mandatory: false,
+            cancellationToken: cancellationToken);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -149,14 +154,16 @@ public class RabbitRpcClient : IDisposable
         }
     }
 
-    private IBasicProperties CreateRequestProperties(string correlationId)
+    private BasicProperties CreateRequestProperties(string correlationId)
     {
-        IBasicProperties props = _channel.CreateBasicProperties();
-        props.CorrelationId = correlationId;
-        props.ReplyTo = _replyRoutingKey;
-        props.Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
-        props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        props.UserId = _userName;
+        var props = new BasicProperties
+        {
+            CorrelationId = correlationId,
+            ReplyTo = _replyRoutingKey,
+            Expiration = ((long)Math.Ceiling(this.Timeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture),
+            Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
+            UserId = _userName
+        };
         return props;
     }
 

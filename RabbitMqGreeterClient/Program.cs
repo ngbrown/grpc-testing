@@ -46,7 +46,7 @@ namespace RabbitMqGreeterClient
             var timeout = TimeSpan.FromMilliseconds(1000);
             var factory = new ConnectionFactory { HostName = "localhost", UserName = "guest", Password = "guest"  };
 
-            using var rpcClient = RabbitRpcClient.Connect(factory, QUEUE_NAME);
+            using var rpcClient = await RabbitRpcClient.ConnectAsync(factory, QUEUE_NAME, cancellationToken);
             rpcClient.Timeout = timeout;
             var rng = new Random();
 
