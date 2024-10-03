@@ -2,6 +2,7 @@
 using System.Diagnostics.CodeAnalysis;
 using RabbitMQ.Client;
 using System.Globalization;
+using Serilog;
 
 namespace RabbitMqGreeterClient
 {
@@ -14,17 +15,23 @@ namespace RabbitMqGreeterClient
             CancellationTokenSource consoleCts = new CancellationTokenSource();
             Console.CancelKeyPress += (sender, eventArgs) =>
             {
-                Console.WriteLine("Cancel event triggered");
+                Log.Information("Cancel event triggered");
                 consoleCts.Cancel();
                 eventArgs.Cancel = true;
             };
 
-            Console.WriteLine("RPC Client");
+            Log.Logger = new LoggerConfiguration()
+                .Enrich.WithProperty("Application", typeof(Program).Assembly.GetName().Name)
+                .WriteTo.Console()
+                .WriteTo.Seq("http://localhost:5341")
+                .CreateLogger();
+
+            Log.Information("RPC Client");
             string argN = args.Length > 0 ? args[0] : "46";
             var n = int.Parse(argN);
             if (n > 46)
             {
-                Console.WriteLine("Argument exceeds possible bounds. Limit to 46 or less.");
+                Log.Error("Argument exceeds possible bounds. Limit to 46 or less.");
                 return 1;
             }
 
@@ -35,6 +42,14 @@ namespace RabbitMqGreeterClient
             catch (OperationCanceledException ex)
             {
                 if (!consoleCts.IsCancellationRequested) throw;
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "Application terminated unexpectedly");
+            }
+            finally
+            {
+                await Log.CloseAndFlushAsync();
             }
 
             return 0;
@@ -55,18 +70,18 @@ namespace RabbitMqGreeterClient
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var next = NextIntBetween(rng, 2, max);
-                Console.WriteLine(" [x] Requesting fib({0})", next);
+                Log.Information(" [x] Requesting fib({FibArgument})", next);
 
                 try
                 {
                     var stopwatch = Stopwatch.StartNew();
                     var response = await rpcClient.CallAsync(next.ToString(CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
                     stopwatch.Stop();
-                    Console.WriteLine(" [.] Got '{0}' in {1:N2} ms", response, stopwatch.Elapsed.TotalMilliseconds);
+                    Log.Information(" [.] Got '{FibResponse}' in {TimeElapsedMs:N2} ms", response, stopwatch.Elapsed.TotalMilliseconds);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
+                    Log.Error(ex, "Error {ExceptionMessage}", ex.Message);
                 }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
