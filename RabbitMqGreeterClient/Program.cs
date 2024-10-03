@@ -3,6 +3,9 @@ using System.Diagnostics.CodeAnalysis;
 using RabbitMQ.Client;
 using System.Globalization;
 using Serilog;
+using Serilog.Templates.Themes;
+using SerilogTracing;
+using SerilogTracing.Expressions;
 
 namespace RabbitMqGreeterClient
 {
@@ -22,9 +25,13 @@ namespace RabbitMqGreeterClient
 
             Log.Logger = new LoggerConfiguration()
                 .Enrich.WithProperty("Application", typeof(Program).Assembly.GetName().Name)
-                .WriteTo.Console()
+                .WriteTo.Console(Formatters.CreateConsoleTextFormatter(TemplateTheme.Code))
                 .WriteTo.Seq("http://localhost:5341")
                 .CreateLogger();
+
+            using var activityListener = new ActivityListenerConfiguration()
+                .Instrument.AspNetCoreRequests()
+                .TraceToSharedLogger();
 
             Log.Information("RPC Client");
             string argN = args.Length > 0 ? args[0] : "46";
