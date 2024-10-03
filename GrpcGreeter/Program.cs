@@ -1,5 +1,8 @@
 using GrpcGreeter.Services;
 using Serilog;
+using Serilog.Templates.Themes;
+using SerilogTracing;
+using SerilogTracing.Expressions;
 
 namespace GrpcGreeter
 {
@@ -8,7 +11,8 @@ namespace GrpcGreeter
         public static void Main(string[] args)
         {
             Log.Logger = new LoggerConfiguration()
-                .WriteTo.Console()
+                .Enrich.WithProperty("Application", typeof(Program).Assembly.GetName().Name)
+                .WriteTo.Console(Formatters.CreateConsoleTextFormatter(TemplateTheme.Code))
                 .WriteTo.Seq("http://localhost:5341")
                 .CreateLogger();
 
@@ -21,6 +25,10 @@ namespace GrpcGreeter
 
                 // Add services to the container.
                 builder.Services.AddSerilog();
+                builder.Services.AddSingleton(
+                    new ActivityListenerConfiguration()
+                        .Instrument.AspNetCoreRequests()
+                        .TraceToSharedLogger());
                 builder.Services.AddGrpc();
 
                 builder.Services.AddSingleton<FibService>();
