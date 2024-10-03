@@ -1,4 +1,5 @@
 using GrpcGreeter.Services;
+using Serilog;
 
 namespace GrpcGreeter
 {
@@ -6,24 +7,43 @@ namespace GrpcGreeter
     {
         public static void Main(string[] args)
         {
-            var builder = WebApplication.CreateBuilder(args);
+            Log.Logger = new LoggerConfiguration()
+                .WriteTo.Console()
+                .WriteTo.Seq("http://localhost:5341")
+                .CreateLogger();
 
-            // Additional configuration is required to successfully run gRPC on macOS.
-            // For instructions on how to configure Kestrel and gRPC clients on macOS, visit https://go.microsoft.com/fwlink/?linkid=2099682
+            try
+            {
+                var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
-            builder.Services.AddGrpc();
+                // Additional configuration is required to successfully run gRPC on macOS.
+                // For instructions on how to configure Kestrel and gRPC clients on macOS, visit https://go.microsoft.com/fwlink/?linkid=2099682
 
-            builder.Services.AddSingleton<FibService>();
-            builder.Services.AddHostedService<RabbitMqServer>();
+                // Add services to the container.
+                builder.Services.AddSerilog();
+                builder.Services.AddGrpc();
 
-            var app = builder.Build();
+                builder.Services.AddSingleton<FibService>();
+                builder.Services.AddHostedService<RabbitMqServer>();
 
-            // Configure the HTTP request pipeline.
-            app.MapGrpcService<GreeterService>();
-            app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
+                var app = builder.Build();
 
-            app.Run();
+                // Configure the HTTP request pipeline.
+                app.MapGrpcService<GreeterService>();
+                app.MapGet("/",
+                    () =>
+                        "Communication with gRPC endpoints must be made through a gRPC client. To learn how to create a client, visit: https://go.microsoft.com/fwlink/?linkid=2086909");
+
+                app.Run();
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "Application terminated unexpectedly");
+            }
+            finally
+            {
+                Log.CloseAndFlush();
+            }
         }
     }
 }
