@@ -20,4 +20,8 @@
     <PackageReference Include="SerilogTracing.Instrumentation.AspNetCore" Version="2.3.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SerilogTracing.Instrumentation.RabbitMQ\SerilogTracing.Instrumentation.RabbitMQ.csproj" />
+  </ItemGroup>
+
 </Project>

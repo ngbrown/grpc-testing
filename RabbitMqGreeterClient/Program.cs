@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using RabbitMQ.Client;
 using System.Globalization;
 using Serilog;
+using Serilog.Events;
 using Serilog.Templates.Themes;
 using SerilogTracing;
 using SerilogTracing.Expressions;
@@ -31,6 +32,7 @@ namespace RabbitMqGreeterClient
 
             using var activityListener = new ActivityListenerConfiguration()
                 .Instrument.AspNetCoreRequests()
+                .Instrument.RabbitMQClient()
                 .TraceToSharedLogger();
 
             Log.Information("RPC Client");
@@ -77,18 +79,22 @@ namespace RabbitMqGreeterClient
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var next = NextIntBetween(rng, 2, max);
-                Log.Information(" [x] Requesting fib({FibArgument})", next);
-
-                try
+                using (var activity = Log.Logger.StartActivity(" [x] Requesting fib({FibArgument})", next))
                 {
-                    var stopwatch = Stopwatch.StartNew();
-                    var response = await rpcClient.CallAsync(next.ToString(CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
-                    stopwatch.Stop();
-                    Log.Information(" [.] Got '{FibResponse}' in {TimeElapsedMs:N2} ms", response, stopwatch.Elapsed.TotalMilliseconds);
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Error {ExceptionMessage}", ex.Message);
+                    try
+                    {
+                        var stopwatch = Stopwatch.StartNew();
+                        var response = await rpcClient
+                            .CallAsync(next.ToString(CultureInfo.InvariantCulture), cancellationToken)
+                            .ConfigureAwait(false);
+                        stopwatch.Stop();
+                        Log.Information(" [.] Got '{FibResponse}' in {TimeElapsedMs:N2} ms", response,
+                            stopwatch.Elapsed.TotalMilliseconds);
+                    }
+                    catch (Exception ex)
+                    {
+                        activity.Complete(LogEventLevel.Error, ex);
+                    }
                 }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);

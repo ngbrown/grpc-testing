@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GrpcGreeterClient", "GrpcGr
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RabbitMqGreeterClient", "RabbitMqGreeterClient\RabbitMqGreeterClient.csproj", "{09378D71-6635-425B-86EE-28925306908A}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SerilogTracing.Instrumentation.RabbitMQ", "SerilogTracing.Instrumentation.RabbitMQ\SerilogTracing.Instrumentation.RabbitMQ.csproj", "{D1459591-195E-4109-B13F-7B863229E587}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{09378D71-6635-425B-86EE-28925306908A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{09378D71-6635-425B-86EE-28925306908A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{09378D71-6635-425B-86EE-28925306908A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D1459591-195E-4109-B13F-7B863229E587}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1459591-195E-4109-B13F-7B863229E587}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1459591-195E-4109-B13F-7B863229E587}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1459591-195E-4109-B13F-7B863229E587}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

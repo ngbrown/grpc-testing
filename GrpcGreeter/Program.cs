@@ -28,6 +28,7 @@ namespace GrpcGreeter
                 builder.Services.AddSingleton(
                     new ActivityListenerConfiguration()
                         .Instrument.AspNetCoreRequests()
+                        .Instrument.RabbitMQClient()
                         .TraceToSharedLogger());
                 builder.Services.AddGrpc();
 
