@@ -6,16 +6,16 @@ namespace GrpcGreeter;
 
 public class RabbitRpcRequestCall
 {
-    private readonly IModel _channel;
+    private readonly IChannel _channel;
     private readonly string _replyExchangeName;
     private readonly byte[] _body;
-    private readonly IBasicProperties _props;
+    private readonly IReadOnlyBasicProperties _props;
     private readonly ulong _deliveryTag;
     private readonly TimeSpan? _timeout;
     
     public TimeSpan DefaultResponseTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
-    public RabbitRpcRequestCall(IModel channel, BasicDeliverEventArgs ea, string replyExchangeName)
+    public RabbitRpcRequestCall(IChannel channel, BasicDeliverEventArgs ea, string replyExchangeName)
     {
         _channel = channel;
         _replyExchangeName = replyExchangeName;
@@ -65,17 +65,19 @@ public class RabbitRpcRequestCall
         if (_channel == null || _channel.IsClosed) throw new OperationCanceledException("Channel closed");
 
         var replyProps = CreateResponseProperties(this._props);
-        this._channel.BasicPublish(exchange: this._replyExchangeName, routingKey: this._props.ReplyTo, basicProperties: replyProps,
-            body: responseBytes);
-        this._channel.BasicAck(deliveryTag: _deliveryTag, multiple: false);
+        await this._channel.BasicPublishAsync(exchange: this._replyExchangeName, routingKey: this._props.ReplyTo, basicProperties: replyProps,
+            body: responseBytes, mandatory: false, cancellationToken: serviceShutdownToken);
+        await this._channel.BasicAckAsync(deliveryTag: _deliveryTag, multiple: false, serviceShutdownToken);
     }
 
-    private IBasicProperties CreateResponseProperties(IBasicProperties props)
+    private BasicProperties CreateResponseProperties(IReadOnlyBasicProperties props)
     {
-        var replyProps = this._channel.CreateBasicProperties();
-        replyProps.CorrelationId = props.CorrelationId;
-        replyProps.Expiration = ((long)Math.Ceiling(this.DefaultResponseTimeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture);
-        replyProps.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        var replyProps = new BasicProperties(props)
+        {
+            CorrelationId = props.CorrelationId,
+            Expiration = ((long)Math.Ceiling(this.DefaultResponseTimeout.TotalMilliseconds)).ToString(CultureInfo.InvariantCulture),
+            Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+        };
         return replyProps;
     }
 }
