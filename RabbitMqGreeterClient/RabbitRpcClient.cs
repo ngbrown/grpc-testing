@@ -77,7 +77,7 @@ public class RabbitRpcClient : IDisposable
         try
         {
             var consumer = new AsyncEventingBasicConsumer(rpcClient._channel);
-            consumer.Received += rpcClient.OnMessageReceived;
+            consumer.ReceivedAsync += rpcClient.OnMessageReceivedAsync;
 
             await rpcClient._channel.BasicConsumeAsync(consumer: consumer,
                 queue: rpcClient._replyQueueName,
@@ -93,7 +93,7 @@ public class RabbitRpcClient : IDisposable
         return rpcClient;
     }
 
-    private Task OnMessageReceived(object? model, BasicDeliverEventArgs ea)
+    private Task OnMessageReceivedAsync(object? model, BasicDeliverEventArgs ea)
     {
         if (!_callbackMapper.TryRemove(ea.BasicProperties.CorrelationId, out var tcs)) return Task.CompletedTask;
 

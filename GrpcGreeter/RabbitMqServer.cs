@@ -53,7 +53,7 @@ public class RabbitMqServer : IHostedService
             await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, cancellationToken);
 
             var consumer = new AsyncEventingBasicConsumer(channel);
-            consumer.Received += OnMessageReceivedAsync;
+            consumer.ReceivedAsync += OnMessageReceivedAsync;
             await channel.BasicConsumeAsync(queue: QUEUE_NAME,
                 autoAck: false,
                 consumer: consumer,
