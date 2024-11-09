@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using Serilog;
 
 namespace RabbitMqGreeterClient;
 
@@ -95,10 +96,24 @@ public class RabbitRpcClient : IDisposable
 
     private Task OnMessageReceivedAsync(object? model, BasicDeliverEventArgs ea)
     {
-        if (!_callbackMapper.TryRemove(ea.BasicProperties.CorrelationId, out var tcs)) return Task.CompletedTask;
+        var logger = Log.ForContext("CorrelationId", ea.BasicProperties.CorrelationId);
+
+        if (!_callbackMapper.TryRemove(ea.BasicProperties.CorrelationId, out var tcs))
+        {
+            logger.Warning("No matching callback waiting");
+
+            return Task.CompletedTask;
+        }
 
         var body = ea.Body.ToArray();
-        tcs.TrySetResult(body);
+        if (tcs.TrySetResult(body))
+        {
+            logger.Information("Received RPC response");
+        }
+        else
+        {
+            logger.Warning("Unable to set TaskCompletionSource");
+        }
 
         return Task.CompletedTask;
     }
